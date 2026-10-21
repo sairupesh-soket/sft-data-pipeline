@@ -2,6 +2,8 @@
 Text: docs/pipeline_content.py (ASD-STE100). Examples: tests/cases.py run through the real code.
 Validation rules: docs/validation_rules.py."""
 import copy
+import difflib
+import re
 import json
 import os
 import sys
@@ -17,7 +19,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import (BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle,
+from reportlab.platypus import (XPreformatted, BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle,
                                 Preformatted, PageBreak, KeepTogether, CondPageBreak)
 from reportlab.platypus.tableofcontents import TableOfContents
 
@@ -135,11 +137,78 @@ def jrow(o):
     return json.dumps(o, ensure_ascii=False, indent=1)
 
 
+DEL_BG, ADD_BG = "#f7b9b9", "#a8e6b4"   # highlight: removed / changed text (left), new text (right)
+_TOK = re.compile(r"\w+|\s+|[^\w\s]")
+
+
+def _marks(la, lb):
+    """Per-character masks: True where a line differs from the other side (token-level diff)."""
+    ma = [[False] * len(x) for x in la]
+    mb = [[False] * len(x) for x in lb]
+    sm = difflib.SequenceMatcher(None, la, lb, autojunk=False)
+    for op, i1, i2, j1, j2 in sm.get_opcodes():
+        if op == "equal":
+            continue
+        n = max(i2 - i1, j2 - j1)
+        for k in range(n):
+            ia, ib = i1 + k, j1 + k
+            if ia < i2 and ib < j2:          # changed line: mark only the changed tokens
+                ta, tb = _TOK.findall(la[ia]), _TOK.findall(lb[ib])
+                pa = [0]; [pa.append(pa[-1] + len(x)) for x in ta]
+                pb = [0]; [pb.append(pb[-1] + len(x)) for x in tb]
+                for o2, a1, a2, b1, b2 in difflib.SequenceMatcher(None, ta, tb, autojunk=False).get_opcodes():
+                    if o2 != "equal":
+                        for c in range(pa[a1], pa[a2]): ma[ia][c] = True
+                        for c in range(pb[b1], pb[b2]): mb[ib][c] = True
+            elif ia < i2:                     # line only on the left
+                ma[ia] = [True] * len(la[ia])
+            else:                             # line only on the right
+                mb[ib] = [True] * len(lb[ib])
+    return ma, mb
+
+
+def _wrap_marked(lines, masks, width):
+    out = []
+    for line, mk in zip(lines, masks):
+        ind = len(line) - len(line.lstrip())
+        pre = " " * (ind + 2)
+        pos, first = 0, True
+        while True:
+            room = width if first else width - len(pre)
+            rest = line[pos:]
+            if len(rest) <= room:
+                out.append(("" if first else pre, rest, mk[pos:])); break
+            cut = rest.rfind(" ", 0, room + 1)
+            if cut <= 0:
+                cut = room
+            else:
+                cut += 1
+            out.append(("" if first else pre, rest[:cut], mk[pos:pos + cut]))
+            pos += cut; first = False
+    return out
+
+
+def _marked_markup(lines, masks, width, color):
+    html = []
+    for pre, seg, mk in _wrap_marked(lines, masks, width):
+        buf, cur, piece = [escape(pre)], None, ""
+        for ch, m in zip(seg, mk):
+            m = m and True
+            if m != cur and piece:
+                buf.append(f'<font backColor="{color}">{escape(piece)}</font>' if cur else escape(piece)); piece = ""
+            cur = m; piece += ch
+        if piece:
+            buf.append(f'<font backColor="{color}">{escape(piece)}</font>' if cur else escape(piece))
+        html.append("".join(buf))
+    return "\n".join(html)
+
+
 def pair(label_a, a, label_b, b, width=51):
-    ta = jrow(a)
-    tb_ = jrow(b)
-    t = Table([[P(label_a, "lab"), P(label_b, "lab")],
-               [Preformatted(wrap(ta, width), ss["code"]), Preformatted(wrap(tb_, width), ss["code"])]], colWidths=[W / 2, W / 2])
+    la, lb = jrow(a).split("\n"), jrow(b).split("\n")
+    ma, mb = _marks(la, lb)
+    ca = XPreformatted(_marked_markup(la, ma, width, DEL_BG), ss["code"])
+    cb = XPreformatted(_marked_markup(lb, mb, width, ADD_BG), ss["code"])
+    t = Table([[P(label_a, "lab"), P(label_b, "lab")], [ca, cb]], colWidths=[W / 2, W / 2])
     t.setStyle(TableStyle([("BACKGROUND", (0, 1), (0, 1), IN_BG), ("BACKGROUND", (1, 1), (1, 1), OUT_BG),
                            ("LINEBEFORE", (0, 1), (0, 1), 2.2, IN_LN), ("LINEBEFORE", (1, 1), (1, 1), 2.2, OUT_LN),
                            ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 1), (-1, 1), 5),
@@ -190,7 +259,11 @@ def rule_block(r, num):
         ex = pair("EXAMPLE (correct, information only)", left, "CORRECT FORM", r["correct"])
     else:
         ex = pair("FLAGGED", left, "CORRECT FORM", r["correct"])
-    return KeepTogether([head, Spacer(1, 2), info, Spacer(1, 3), ex, Spacer(1, 10)])
+    d = Table([[P("Difference", "lab"), P(V.DIFF[r["id"]], "cell")]], colWidths=[30 * mm, W - 30 * mm])
+    d.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fff6d6")), ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                           ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#e0c060")),
+                           ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3), ("LEFTPADDING", (0, 0), (-1, -1), 4)]))
+    return KeepTogether([head, Spacer(1, 2), info, Spacer(1, 3), ex, Spacer(1, 2), d, Spacer(1, 10)])
 
 
 def rules_chapter(prefix):
