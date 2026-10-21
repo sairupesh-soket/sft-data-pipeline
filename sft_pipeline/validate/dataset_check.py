@@ -149,6 +149,42 @@ def shape_issues(r):
     return set()
 
 
+# ---- information hidden inside the text: must be in its own OpenAI field instead ----
+_PAIRS = [(r"<scratchpad>", r"</scratchpad>"), (r"<THOUGHT>", r"</THOUGHT>"), (r"<analysis>", r"</analysis>"),
+          (r"<thought>", r"</thought>"), (r"<reasoning_start>", r"<reasoning_end>")]
+EMBED_REASON = re.compile("|".join(f"{a}[\\s\\S]*?{b}" for a, b in _PAIRS) +
+                          r"|<\|(?:startthought|endthought|thinking|start_of_reasoning|end_of_reasoning)\|>|</\|thinking\|>")
+EMBED_CALL = re.compile(r"</?function_call>|<use_mcp_tool>|\[TOOL_CALLS\]|<\|python_tag\|>|<｜tool▁|<\|tool_calls?_(?:section_)?begin\|>"
+                        r"|<tool_use>|^\s*```(?:json)?\s*\[?\s*\{\s*\"name\"\s*:\s*\"[^\"]+\"\s*,\s*\"(?:arguments|parameters)\"\s*:"
+                        r"|^\s*Action:[^\n]*\n\s*Action Input:", re.M)
+EMBED_RESULT = re.compile(r"FUNCTION RESPONSE:|</?tool_result>|^\s*Observation:\s*\S", re.M)
+_FENCE = re.compile(r"```[\s\S]*?```")
+EMBED_ROLES = re.compile(r"^(?:Human|User|USER|HUMAN)\s*:[^\n]*\n[\s\S]*?^(?:Assistant|ASSISTANT|AI)\s*:", re.M)
+
+
+def embedded_issues(msgs):
+    """Reasoning, tool calls, tool results or chat turns written INSIDE the text instead of their OpenAI fields."""
+    iss = set()
+    for i, m in enumerate(msgs):
+        t = m.get("content") if isinstance(m.get("content"), str) else ""
+        role = m.get("role")
+        if role == "assistant":
+            if EMBED_REASON.search(t) or EMBED_REASON.search(m.get("reasoning_content") or ""):
+                iss.add("EMBED_reasoning_tag")
+            if EMBED_CALL.search(t):
+                iss.add("EMBED_tool_call_text")
+            if "FUNCTION RESPONSE:" in t or "<tool_result>" in t:
+                iss.add("EMBED_tool_result_text")
+            if EMBED_ROLES.search(_FENCE.sub("", t)):      # chat turns shown inside a code block are examples, not turns
+                iss.add("EMBED_role_turns")
+        elif role == "user" and i > 0:
+            prev = msgs[i - 1]
+            if EMBED_RESULT.match(t) or "<tool_result>" in t or (
+                    prev.get("role") == "assistant" and EMBED_CALL.search(prev.get("content") or "") and EMBED_RESULT.search(t)):
+                iss.add("EMBED_tool_result_text")
+    return iss
+
+
 def tool_flow_issues(msgs):
     """Tool-call flow: type must be "function"; ids unique inside one turn; every call answered before the
     conversation goes on (a row may END on a tool call); no "name" on tool messages (not in the OpenAI spec)."""
@@ -181,7 +217,8 @@ def row_issues(r, line, path, do_render):
         iss = _row_issues(r, line, path, do_render)
     except Exception as e:  # never crash a whole file on one strange row
         return {"FORMAT_bad_shape:check_error_" + type(e).__name__}
-    return iss | tool_flow_issues(r.get("messages") or [])
+    msgs = r.get("messages") or []
+    return iss | tool_flow_issues(msgs) | embedded_issues(msgs)
 
 
 def _row_issues(r, line, path, do_render):

@@ -26,7 +26,7 @@ REPO = os.path.dirname(D)
 sys.path.insert(0, REPO); sys.path.insert(0, D); sys.path.insert(0, os.path.join(REPO, "tests"))
 os.environ.setdefault("SFTPIPE_SRC", "."); os.environ.setdefault("SFTPIPE_OUT", "/tmp/sftpipe_doc_out")
 import pipeline_content as C          # noqa: E402
-import rules_content as RC            # noqa: E402
+import validation_rules as V          # noqa: E402
 from cases import REPAIR_CASES, ADAPTER_CASES   # noqa: E402
 from test_pipeline import run_repair, run_adapter   # noqa: E402
 
@@ -109,9 +109,35 @@ def blocks(bl):
     return out
 
 
+def jrow(o):
+    """OpenAI row as JSON, one message per line (still valid JSON)."""
+    if isinstance(o, str):
+        return o
+    if isinstance(o, dict) and isinstance(o.get("messages"), list) and all(isinstance(m, dict) for m in o["messages"]):
+        parts = ['{"messages": [']
+        ms = o["messages"]
+        for i, m in enumerate(ms):
+            parts.append("  " + json.dumps(m, ensure_ascii=False) + ("," if i < len(ms) - 1 else ""))
+        rest = [k for k in o if k != "messages"]
+        parts.append("]" + ("," if rest else "}"))
+        for j, k in enumerate(rest):
+            v = o[k]
+            if k == "tools" and isinstance(v, list):
+                parts.append(' "tools": [')
+                for i, tl in enumerate(v):
+                    parts.append("  " + json.dumps(tl, ensure_ascii=False) + ("," if i < len(v) - 1 else ""))
+                parts.append(" ]" + ("," if j < len(rest) - 1 else "}"))
+            else:
+                parts.append(f' "{k}": ' + json.dumps(v, ensure_ascii=False) + ("," if j < len(rest) - 1 else "}"))
+        return "\n".join(parts)
+    if isinstance(o, list):
+        return "[\n" + ",\n".join("  " + json.dumps(m, ensure_ascii=False) for m in o) + "\n]"
+    return json.dumps(o, ensure_ascii=False, indent=1)
+
+
 def pair(label_a, a, label_b, b, width=51):
-    ta = a if isinstance(a, str) else json.dumps(a, ensure_ascii=False, indent=1)
-    tb_ = b if isinstance(b, str) else json.dumps(b, ensure_ascii=False, indent=1)
+    ta = jrow(a)
+    tb_ = jrow(b)
     t = Table([[P(label_a, "lab"), P(label_b, "lab")],
                [Preformatted(wrap(ta, width), ss["code"]), Preformatted(wrap(tb_, width), ss["code"])]], colWidths=[W / 2, W / 2])
     t.setStyle(TableStyle([("BACKGROUND", (0, 1), (0, 1), IN_BG), ("BACKGROUND", (1, 1), (1, 1), OUT_BG),
@@ -144,19 +170,41 @@ def diagram():
 
 
 def rule_block(r, num):
-    a = "FLAG" if r["action"].startswith("FLAG") else "INFO"
+    a = r["label"]
     head = Table([[Paragraph(f'<b>{num}&nbsp;&nbsp;{escape(r["title"])}</b>', ss["h2"]),
                    Paragraph(f'<font color="white"><b>{a}</b></font>', ParagraphStyle("bd", parent=ss["cell"], alignment=TA_CENTER))]],
                  colWidths=[W - 26 * mm, 26 * mm])
     head.setStyle(TableStyle([("BACKGROUND", (1, 0), (1, 0), ACT[a]), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                               ("LEFTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]))
-    rows = [[P("Rule id", "lab"), Paragraph(f'<font name="DVM">{escape(r["code"])}</font>', ss["cell"])],
+    rid = r["id"] + ("_<field>" if r["id"] == "EKA_T1" else "_<name>" if r["id"] == "IDENTITY" else "_<details>" if r["id"] in ("RENDER", "FORMAT_bad_shape") else "")
+    rows = [[P("Rule id", "lab"), Paragraph(f'<font name="DVM">{escape(rid)}</font>', ss["cell"])],
             [P("What it finds", "lab"), P(r["what"], "cell")], [P("Why it is a problem", "lab"), P(r["why"], "cell")],
-            [P("How we check", "lab"), P(r["how"], "cell")]]
+            [P("How it is checked", "lab"), P(r["how"], "cell")]]
+    if r.get("path"):
+        rows.append([P("Example file", "lab"), Paragraph(f'<font name="DVM">{escape(r["path"])}</font>', ss["cell"])])
     info = Table(rows, colWidths=[30 * mm, W - 30 * mm])
     info.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEBELOW", (0, 0), (-1, -2), 0.4, LINE),
                               ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2), ("LEFTPADDING", (0, 0), (-1, -1), 2)]))
-    return KeepTogether([head, Spacer(1, 2), info, Spacer(1, 3), pair("FLAGGED", r["before"], "CORRECT FORM", r["after"]), Spacer(1, 10)])
+    left = r["show"] or r["flagged"]
+    if a == "INFO":
+        ex = pair("EXAMPLE (correct, information only)", left, "CORRECT FORM", r["correct"])
+    else:
+        ex = pair("FLAGGED", left, "CORRECT FORM", r["correct"])
+    return KeepTogether([head, Spacer(1, 2), info, Spacer(1, 3), ex, Spacer(1, 10)])
+
+
+def rules_chapter(prefix):
+    out = []
+    groups = []
+    for g, r in V.R:
+        if not groups or groups[-1][0] != g:
+            groups.append((g, []))
+        groups[-1][1].append(r)
+    for gi, (g, rules) in enumerate(groups, 1):
+        out += [CondPageBreak(60 * mm), Paragraph(escape(f"{prefix}.{gi}  {g}"), ss["h2"])]
+        for ri, r in enumerate(rules, 1):
+            out.append(rule_block(r, f"{prefix}.{gi}.{ri}"))
+    return out
 
 
 class Doc(BaseDocTemplate):
@@ -170,7 +218,7 @@ class Doc(BaseDocTemplate):
         if d.page == 1:
             return
         c.saveState(); c.setFont("DV", 7.5); c.setFillColor(MUTED)
-        c.drawString(18 * mm, A4[1] - 11 * mm, "SFT Data Pipeline")
+        c.drawString(18 * mm, A4[1] - 11 * mm, self.title)
         c.drawRightString(A4[0] - 18 * mm, 9 * mm, f"Page {d.page}")
         c.setStrokeColor(LINE); c.line(18 * mm, A4[1] - 12.5 * mm, A4[0] - 18 * mm, A4[1] - 12.5 * mm)
         c.restoreState()
@@ -259,11 +307,9 @@ def build(out):
            table(C.E2E_TABLE[0], C.E2E_TABLE[1], [W * 0.14, W * 0.36, W * 0.2, W * 0.3]), Spacer(1, 8)]
     st += H1("6. hf_domain tools") + blocks(C.HF_DOMAIN)
     st += H1("7. Validate: rules (flag only)") + blocks(C.VALIDATE)
-    st += [P("Labels: FLAG = the row has the problem and is in the issue list. INFO = information only.", "note")]
-    for gi, (gt, gintro, rules) in enumerate(RC.GROUPS, 1):
-        st += [CondPageBreak(60 * mm), Paragraph(escape(f"7.{gi}  {gt.split('. ', 1)[-1]}"), ss["h2"]), P(gintro)]
-        for ri, r in enumerate(rules, 1):
-            st.append(rule_block(r, f"7.{gi}.{ri}"))
+    st += [P("Labels: FLAG = the row has the problem and is in the issue list. INFO = information only. "
+             "Every example below is checked by tests/test_rule_examples.py.", "note")]
+    st += rules_chapter("7")
     st += [PageBreak()] + H1("8. Stats") + blocks(C.STATS)
     st += H1("9. Legacy code") + blocks(C.LEGACY)
     st += H1("10. Steps of other teams") + blocks(C.EXTERNAL)

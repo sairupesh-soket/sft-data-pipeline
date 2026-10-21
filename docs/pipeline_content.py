@@ -190,7 +190,7 @@ HF_DOMAIN = [
 ]
 
 VALIDATE = [
-    ("p", "The validation checks every row with 67 rules (59 FLAG, 8 INFO) and the eka template render check. "
+    ("p", "The validation checks every row with 67 rules (63 FLAG, 4 INFO), including the eka template render check. "
           "It writes a list of every flagged row and sample rows for each rule. It changes nothing."),
     ("code", "export EKA_SPM=/path/eka_v0_1_1.model\nexport EKA_TEMPLATE=/path/eka_v0_2_0/chat_template.jinja\n"
              "python3 -m sft_pipeline.validate CLEAN REPORT_DIR 32 100   # 32 processes, render 1 row in 100"),
