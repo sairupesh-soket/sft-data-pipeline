@@ -21,6 +21,14 @@ def tasks(root):
 
 
 def fmt(s, n, cat):
+    try:
+        return _fmt(s, n, cat)
+    except Exception:  # broken shape: show the raw row
+        head = ["=" * 110, f"{cat} SAMPLE {n}", f"file: {s['file']}", f"byte offset of the line: {s['byte']}", "=" * 110]
+        return "\n".join(head) + "\n[raw row, shape is broken]\n" + json.dumps(s["row"], ensure_ascii=False, indent=1) + "\n\n"
+
+
+def _fmt(s, n, cat):
     out = ["=" * 110, f"{cat} SAMPLE {n}", f"file: {s['file']}", f"byte offset of the line: {s['byte']}", "=" * 110]
     r = s["row"]
     if r.get("tools"):

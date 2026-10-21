@@ -10,7 +10,7 @@ OpenAI-format JSONL
    │  2. clean     sft_pipeline/repairs    known format problems repaired (output folder; source is not changed)
    ▼
 clean JSONL
-   │  3. validate  sft_pipeline/validate   62 rules; FLAGS rows (file + line + reasons), changes nothing
+   │  3. validate  sft_pipeline/validate   67 rules; FLAGS rows (file + line + reasons), changes nothing
    ▼
 issue lists, samples, stats  (4. stats: rows, o200k tokens, turns, tool calls, reasoning)
 ```

@@ -121,8 +121,70 @@ def literal_newlines(t):
     return k >= 5 and t.count("\n") < k
 
 
+def shape_issues(r):
+    """OpenAI shape checks that must pass before any other check can run (else the other checks would crash)."""
+    if not isinstance(r, dict):
+        return {"FORMAT_bad_shape:row_not_object"}
+    msgs = r.get("messages")
+    if msgs is None:
+        return set()
+    if not isinstance(msgs, list):
+        return {"FORMAT_bad_shape:messages_not_list"}
+    for m in msgs:
+        if not isinstance(m, dict):
+            return {"FORMAT_bad_shape:message_not_object"}
+        tc = m.get("tool_calls")
+        if tc is not None:
+            if not isinstance(tc, list):
+                return {"FORMAT_bad_shape:tool_calls_not_list"}
+            for t in tc:
+                if not isinstance(t, dict) or not isinstance(t.get("function"), dict):
+                    return {"FORMAT_bad_shape:tool_call_not_object"}
+        rc = m.get("reasoning_content")
+        if rc is not None and not isinstance(rc, str):
+            return {"FORMAT_bad_shape:reasoning_not_string"}
+    t = r.get("tools")
+    if t is not None and not isinstance(t, list):
+        return {"FORMAT_bad_shape:tools_not_list"}
+    return set()
+
+
+def tool_flow_issues(msgs):
+    """Tool-call flow: type must be "function"; ids unique inside one turn; every call answered before the
+    conversation goes on (a row may END on a tool call); no "name" on tool messages (not in the OpenAI spec)."""
+    iss = set()
+    for i, m in enumerate(msgs):
+        if m.get("role") == "tool" and "name" in m:
+            iss.add("FORMAT_tool_message_name")
+        calls = m.get("tool_calls") or []
+        if not calls:
+            continue
+        if any(c.get("type") != "function" for c in calls):
+            iss.add("FORMAT_tool_call_type")
+        ids = [c.get("id") for c in calls]
+        if len(set(ids)) != len(ids):
+            iss.add("TOOL_duplicate_call_id")
+        j, answered = i + 1, set()
+        while j < len(msgs) and msgs[j].get("role") == "tool":
+            answered.add(msgs[j].get("tool_call_id")); j += 1
+        if j < len(msgs) and not set(ids) <= answered:
+            iss.add("TOOL_call_without_reply")
+    return iss
+
+
 def row_issues(r, line, path, do_render):
     """All issue names for one parsed row (used by the audit and by the cleaner, so both agree)."""
+    bad = shape_issues(r)
+    if bad:
+        return bad
+    try:
+        iss = _row_issues(r, line, path, do_render)
+    except Exception as e:  # never crash a whole file on one strange row
+        return {"FORMAT_bad_shape:check_error_" + type(e).__name__}
+    return iss | tool_flow_issues(r.get("messages") or [])
+
+
+def _row_issues(r, line, path, do_render):
     msgs = r.get("messages") or []
     iss = {"AUDIT_" + k for k in FA.check_row(r) if FA.CHECKS[k][0] in "ABCD"}
     for where, t in fields(r):
@@ -210,24 +272,26 @@ def run(task):
                 c["ISSUE AUDIT_bad_json"] += 1
                 rowf.write(f"{rel}\t{off}\tAUDIT_bad_json\n")
                 continue
-            msgs = r.get("messages") or []
+            msgs = r.get("messages") if isinstance(r, dict) else None
+            msgs = msgs if isinstance(msgs, list) else []
             do_render = (n - 1) % RENDER_EVERY == 0
             if do_render:
                 c["#rendered"] += 1
             iss = row_issues(r, line, path, do_render)
-            # stats
-            has_rc = any(m.get("role") == "assistant" and (m.get("reasoning_content") or "").strip() for m in msgs)
-            has_think = any(m.get("role") == "assistant" and isinstance(m.get("content"), str) and "<think>" in m["content"] for m in msgs)
-            reas = "reasoning_content" if has_rc else ("think_in_content" if has_think else "no_reasoning")
-            tool = "tool_calls" if any(m.get("tool_calls") for m in msgs) else "no_tool_calls"
-            nu = sum(1 for m in msgs if m.get("role") == "user")
-            turn = "multi_turn" if nu > 1 else "single_turn"
-            for g in ("ALL", "top:" + top, "src:" + src):
-                c[f"STAT|{g}|rows"] += 1
-                c[f"STAT|{g}|reasoning|{reas}"] += 1
-                c[f"STAT|{g}|tools|{tool}"] += 1
-                c[f"STAT|{g}|turns|{turn}"] += 1
-                c[f"STAT|{g}|combo|{reas}+{tool}+{turn}"] += 1
+            # stats (skipped for rows with a broken shape)
+            if not any(k.startswith("FORMAT_bad_shape") for k in iss):
+                has_rc = any(m.get("role") == "assistant" and (m.get("reasoning_content") or "").strip() for m in msgs)
+                has_think = any(m.get("role") == "assistant" and isinstance(m.get("content"), str) and "<think>" in m["content"] for m in msgs)
+                reas = "reasoning_content" if has_rc else ("think_in_content" if has_think else "no_reasoning")
+                tool = "tool_calls" if any(m.get("tool_calls") for m in msgs) else "no_tool_calls"
+                nu = sum(1 for m in msgs if m.get("role") == "user")
+                turn = "multi_turn" if nu > 1 else "single_turn"
+                for g in ("ALL", "top:" + top, "src:" + src):
+                    c[f"STAT|{g}|rows"] += 1
+                    c[f"STAT|{g}|reasoning|{reas}"] += 1
+                    c[f"STAT|{g}|tools|{tool}"] += 1
+                    c[f"STAT|{g}|turns|{turn}"] += 1
+                    c[f"STAT|{g}|combo|{reas}+{tool}+{turn}"] += 1
             c[f"STAT|ALL|chars|{min(len(line) // 8000, 16)}"] += 1
             if iss:
                 rowf.write(f"{rel}\t{off}\t{','.join(sorted(iss))}\n")
