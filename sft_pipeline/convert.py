@@ -7,6 +7,7 @@ Adapters (sft_pipeline/adapters/):
                    args: [NPROC]
   traces           HF "traces" datasets with a messages / conversations / conversation column; ShareGPT from/value
   traces_extra1..9 per-dataset converters for traces datasets with other columns (see each module docstring)
+  traces_post      traces post-convert fixes (missing assistant turn, fimbulvntr, struct nulls, excluded files)
   agentic          HF agentic datasets: one explicit converter per dataset   args: [NAME ...] [--limit N]
   posttraining     codeLLM posttraining: A (native OpenAI rows) + B1 (reliable split markers)   args: [NPROC]
   posttraining_b2  codeLLM posttraining B2: MCQ / code-fence heuristic split   args: [NPROC]
@@ -21,6 +22,7 @@ import sys
 ADAPTERS = {
     "generic": "sft_pipeline.adapters.generic",
     "traces": "sft_pipeline.adapters.traces.base",
+    "traces_post": "sft_pipeline.adapters.traces.post",
     "agentic": "sft_pipeline.adapters.agentic",
     "posttraining": "sft_pipeline.adapters.posttraining",
     "posttraining_b2": "sft_pipeline.adapters.posttraining_b2",

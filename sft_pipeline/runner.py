@@ -40,7 +40,7 @@ def _one(rel):
     drop_path = os.path.join(log, "dropped", rel) if log else None
     c = Counter()
     fd = None
-    with sio.open_bytes(sp) as fi, sio.open_bytes(tmp, "wb") as fo:
+    with sio.open_bytes(sp) as fi, sio.open_out_bytes(tmp, dp) as fo:
         for ln, line in enumerate(fi, 1):
             if not line.strip():
                 continue

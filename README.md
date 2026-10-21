@@ -49,8 +49,8 @@ python3 -m sft_pipeline.convert agentic --src RAW --out CONVERTED [DATASET ...] 
 python3 -m sft_pipeline.convert posttraining    --src RAW --out CONVERTED [NPROC]
 python3 -m sft_pipeline.convert posttraining_b2 --src RAW --out CONVERTED [NPROC]
 
-# 2. clean (repair steps; --steps / --skip to choose; --gate also removes rows that fail a FLAG rule)
-python3 -m sft_pipeline.clean CONVERTED CLEAN --nproc 32
+# 2. clean (repair steps in the order of the source family; --gate also removes rows that fail a FLAG rule)
+python3 -m sft_pipeline.clean CONVERTED CLEAN --preset agentic --nproc 32
 
 # 3. validate (read only)
 export EKA_SPM=/path/eka_v0_1_1.model EKA_TEMPLATE=/path/chat_template.jinja
@@ -59,6 +59,16 @@ python3 -m sft_pipeline.validate CLEAN REPORT_DIR 32 100
 # 4. stats
 python3 -m sft_pipeline.stats STATS_DIR mydata=CLEAN
 ```
+
+### Production recipes (verified end to end: same rows as the production data)
+
+| Family | Commands |
+|---|---|
+| HF agentic | `convert agentic` -> `clean --preset agentic` |
+| HF traces | `convert traces` -> `convert traces_extra1..9` -> `convert traces_post` -> `clean --preset traces` |
+| posttraining | `convert posttraining` (+ `posttraining_b2`) -> `clean --preset posttraining` |
+| hf_domain | (external normalize) -> `hf_domain/lid_split.py` -> `hf_domain/strict_filter.py` (production flags in docs) -> `hf_domain/python_tool_postpass.py --apply` -> `clean --preset hf_domain` |
+| new data, current format | `clean --preset current` |
 
 Logs never go into a data folder: by default `<out>_logs/` next to the output.
 Folders and files that start with `_` are skipped as input. Every stage resumes after a kill.

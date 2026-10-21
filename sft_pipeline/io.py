@@ -31,6 +31,13 @@ def open_bytes(path, mode="rb"):
     return open(path, mode)
 
 
+def open_out_bytes(tmp, final_path):
+    """Open the tmp file for writing; gzip when the FINAL name ends with .gz (the tmp name does not)."""
+    if final_path.endswith(".gz"):
+        return gzip.open(tmp, "wb", compresslevel=3)
+    return open(tmp, "wb")
+
+
 def atomic_target(path):
     """Return a tmp path next to path. Write there, then call commit(tmp, path)."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
