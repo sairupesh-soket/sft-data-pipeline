@@ -10,7 +10,7 @@ OpenAI-format JSONL
    │  2. clean     sft_pipeline/repairs    known format problems repaired (output folder; source is not changed)
    ▼
 clean JSONL
-   │  3. validate  sft_pipeline/validate   67 rules; FLAGS rows (file + line + reasons), changes nothing
+   │  3. validate  sft_pipeline/validate   68 rules; FLAGS rows (file + line + reasons), changes nothing
    ▼
 issue lists, samples, stats  (4. stats: rows, o200k tokens, turns, tool calls, reasoning)
 ```
@@ -73,7 +73,7 @@ python3 -m sft_pipeline.stats STATS_DIR mydata=CLEAN
 Logs never go into a data folder: by default `<out>_logs/` next to the output.
 Folders and files that start with `_` are skipped as input. Every stage resumes after a kill.
 
-## Validation rules (67)
+## Validation rules (68)
 
 The validation only FLAGS rows (file, line, rule ids). It does not change or remove data.
 A row that passes all FLAG rules is in the proper OpenAI format: reasoning only in `reasoning_content`, tool calls only in `tool_calls`, tool results only in `role: "tool"` messages, and no template tokens or hidden turns in the text.
@@ -85,7 +85,7 @@ Each rule has a flagged and a correct example row (OpenAI format) in `docs/valid
 | OpenAI format | `FORMAT_bad_shape`, `AUDIT_empty_messages`, `AUDIT_non_openai_top_key`, `AUDIT_unknown_role`, `AUDIT_unknown_msg_key`, `AUDIT_content_not_string`, `AUDIT_reasoning_on_non_assistant`, `AUDIT_args_not_json_string`, `AUDIT_args_invalid_json`, `TOOL_malformed`, `AUDIT_tool_call_no_id`, `AUDIT_tool_call_no_name`, `FORMAT_tool_call_type`, `AUDIT_tool_call_not_in_tools`, `AUDIT_tool_calls_but_no_tools`, `AUDIT_tool_def_bad_shape`, `AUDIT_tool_without_call`, `AUDIT_tool_without_id`, `AUDIT_tool_id_mismatch`, `TOOL_call_without_reply`, `TOOL_duplicate_call_id`, `FORMAT_tool_message_name` | FLAG |
 | Empty content | `AUDIT_empty_user`, `AUDIT_empty_assistant`, `AUDIT_final_answer_empty` | FLAG |
 | Reasoning in the answer text | `THINK_in_content`, `AUDIT_think_tag_left`, `AUDIT_other_reasoning_tags`, `EMBED_reasoning_tag`, `REASON_in_answer`, `GEN_artifact_in_answer`, `RC_equals_answer`, `AUDIT_reasoning_is_problem_creation` | FLAG |
-| Tool calls, tool results and turns hidden in the text | `TOOLCALL_as_text`, `EMBED_tool_call_text`, `EMBED_tool_result_text`, `EMBED_role_turns`, `SYS_tools_promised_but_no_tools`, `USER_embedded_transcript`, `USER_python_repr_messages` | FLAG |
+| Tool calls, tool results and turns hidden in the text | `TOOLCALL_as_text`, `EMBED_tool_call_text`, `EMBED_tool_result_text`, `EMBED_role_turns`, `EMBED_agent_text_protocol`, `SYS_tools_promised_but_no_tools`, `USER_embedded_transcript`, `USER_python_repr_messages` | FLAG |
 | Special tokens and template render | `AUDIT_special_token_leak`, `EKA_T1`, `RENDER` | FLAG |
 | Text quality | `AUDIT_replacement_char`, `AUDIT_mojibake`, `AUDIT_control_chars`, `AUDIT_repetition_loop`, `AUDIT_harness_error_text`, `AUDIT_output_limit_loop`, `AUDIT_degenerate_answer`, `AUDIT_answer_equals_prompt`, `LITERAL_backslash_n`, `CODE_newlines_collapsed`, `PDF_hard_line_breaks` | FLAG |
 | Safety, identity and sources | `BACKDOOR`, `IDENTITY`, `SRC_incorrect_solutions` | FLAG |
@@ -119,4 +119,5 @@ Each rule has a flagged and a correct example row (OpenAI format) in `docs/valid
 python3 tests/test_pipeline.py          # repair steps and adapter helpers (before / after)
 python3 tests/test_validate_format.py   # 44 OpenAI-format breaks are flagged, good rows pass
 python3 tests/test_rule_examples.py     # every documented rule example behaves as documented
+python3 tests/test_embedded.py          # 49 hidden-content formats are flagged, plain answers pass
 ```

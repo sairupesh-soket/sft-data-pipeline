@@ -162,6 +162,11 @@ _FENCE = re.compile(r"```[\s\S]*?```")
 EMBED_ROLES = re.compile(r"^(?:Human|User|USER|HUMAN)\s*:[^\n]*\n[\s\S]*?^(?:Assistant|ASSISTANT|AI)\s*:", re.M)
 
 
+ASKS_DIALOG = re.compile(r"\b(dialog(ue)?s?|conversations?|script|role-?play|transcript|chat between|interview)\b", re.I)
+AGENT_ASSIST = re.compile(r"^\s*THOUGHT:|</?execute>|^\s*\{\s*\"analysis\"\s*:[\s\S]*\"keystrokes\"\s*:", re.M)
+AGENT_USER = re.compile(r"^\s*(?:<returncode>|New Terminal Output:|Current [Tt]erminal (?:state|screen):|Previous response had warnings:)")
+
+
 def embedded_issues(msgs):
     """Reasoning, tool calls, tool results or chat turns written INSIDE the text instead of their OpenAI fields."""
     iss = set()
@@ -175,10 +180,16 @@ def embedded_issues(msgs):
                 iss.add("EMBED_tool_call_text")
             if "FUNCTION RESPONSE:" in t or "<tool_result>" in t:
                 iss.add("EMBED_tool_result_text")
-            if EMBED_ROLES.search(_FENCE.sub("", t)):      # chat turns shown inside a code block are examples, not turns
+            asked = next((x.get("content") for x in reversed(msgs[:i]) if x.get("role") == "user" and isinstance(x.get("content"), str)), "")
+            # chat turns inside a code block are examples; a requested dialog / conversation / script is the answer itself
+            if EMBED_ROLES.search(_FENCE.sub("", t)) and not ASKS_DIALOG.search(asked or ""):
                 iss.add("EMBED_role_turns")
+            if AGENT_ASSIST.search(t):
+                iss.add("EMBED_agent_text_protocol")
         elif role == "user" and i > 0:
             prev = msgs[i - 1]
+            if AGENT_USER.match(t):
+                iss.add("EMBED_agent_text_protocol")
             if EMBED_RESULT.match(t) or "<tool_result>" in t or (
                     prev.get("role") == "assistant" and EMBED_CALL.search(prev.get("content") or "") and EMBED_RESULT.search(t)):
                 iss.add("EMBED_tool_result_text")
@@ -341,7 +352,7 @@ def run(task):
     return dict(c), smp
 
 
-# not counted as "remove": informational only
+# INFO rules: not counted as FLAG
 INFO_ONLY = {"END_single_call", "END_traj_stops", "IDENTITY_userrule", "INFO_as_an_AI_language_model", "AUDIT_unfilled_template"}
 
 
@@ -369,7 +380,7 @@ def write_row_lists(tot):
         for l in open(f"{OUT}/_rows/{fn}"):
             rel, off, iss = l.rstrip("\n").split("\t")
             byf[rel].append((int(off), iss))
-    rm = open(f"{OUT}/ROWS_TO_REMOVE.txt", "w"); info = open(f"{OUT}/ROWS_INFO_ONLY.txt", "w")
+    rm = open(f"{OUT}/ROWS_FLAGGED.txt", "w"); info = open(f"{OUT}/ROWS_INFO_ONLY.txt", "w")
     hdr = "# file (relative to {})\tline (1-based)\tbyte_offset\treasons\n".format(ROOT)
     rm.write(hdr); info.write(hdr)
     n_rm = n_info = 0
@@ -426,9 +437,9 @@ def main():
             for i, s in enumerate(lst[:10], 1):
                 fh.write(fmt(s, i, k2))
     n_rm, n_info, by_reason = write_row_lists(tot)
-    with open(f"{out}/REMOVE_SUMMARY.txt", "w") as fh:
-        fh.write(f"DATASET {root}\nrows {rows:,}\nrows to remove (>= 1 real issue): {n_rm:,} ({100 * n_rm / max(rows, 1):.3f}%)\n"
-                 f"rows with info flags only (keep): {n_info:,}\nlist: ROWS_TO_REMOVE.txt (file, line, byte offset, reasons)\n\n"
+    with open(f"{out}/FLAG_SUMMARY.txt", "w") as fh:
+        fh.write(f"DATASET {root}\nrows {rows:,}\nrows with at least one FLAG rule: {n_rm:,} ({100 * n_rm / max(rows, 1):.3f}%)\n"
+                 f"rows with INFO rules only: {n_info:,}\nlist: ROWS_FLAGGED.txt (file, line, byte offset, reasons)\n\n"
                  "rows per reason (a row can have several):\n")
         for k, v in by_reason.most_common():
             fh.write(f"{v:>13,}  {k}\n")

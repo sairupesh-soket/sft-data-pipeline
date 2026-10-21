@@ -32,7 +32,7 @@ INTRO = [
      "a count. If many flagged rows are good rows, change the rule."),
     ("How to run",
      "python3 -m sft_pipeline.validate DATA_FOLDER REPORT_FOLDER NPROC [RENDER_EVERY]. Outputs: ISSUES_REPORT.txt, "
-     "REMOVE_SUMMARY.txt (rows with at least one FLAG rule), ROWS_TO_REMOVE.txt (file, line, byte offset, rule ids), "
+     "FLAG_SUMMARY.txt (rows with at least one FLAG rule), ROWS_FLAGGED.txt (file, line, byte offset, rule ids), "
      "ROWS_INFO_ONLY.txt, samples/<rule>.txt (full rows)."),
 ]
 
@@ -309,10 +309,25 @@ rule(G5, "EMBED_tool_result_text", "Tool result written as text",
      row(u("Time in Rome?"), a('Let me check.\nFUNCTION RESPONSE: {"time": "10:00"}\nIt is 10:00 in Rome.'), tools=[TOOL_TIME]),
      GOOD_TOOL)
 rule(G5, "EMBED_role_turns", "Chat turns written inside the answer",
-     "The answer contains new turns such as \"Human: ...\" followed by \"Assistant: ...\" (outside a code block).",
+     "The answer contains new turns such as \"Human: ...\" followed by \"Assistant: ...\". Not flagged: turns inside a code "
+     "block, and answers to a request for a dialog, conversation or script.",
      "The model learns to write the next user turn itself.", "Search the answer for role lines outside code blocks.",
      row(u("What is 3 + 4?"), a("7.\n\nHuman: And 5 + 6?\n\nAssistant: 11.")),
      row(u("What is 3 + 4?"), a("7."), u("And 5 + 6?"), a("11.")))
+rule(G5, "EMBED_agent_text_protocol", "Agent text protocol instead of tool calls",
+     "An agent row uses a text protocol: the assistant writes \"THOUGHT:\" + a command, <execute>...</execute>, or a JSON "
+     "{\"analysis\", \"commands\": [{\"keystrokes\"}]} object, and the user message gives the result (<returncode>, "
+     "\"New Terminal Output:\", \"Current terminal state:\").",
+     "The reasoning, the calls and the results are text in content, not reasoning_content, tool_calls and tool messages. "
+     "This is a valid format for some agent harnesses; the data owner decides if it is wanted.",
+     "Match the start of assistant and user messages against these protocols.",
+     row(u("Find the engine file."), a("THOUGHT: I need to search the repository.\n\n```bash\ngrep -rl engine .\n```"),
+         u("<returncode>0</returncode>\n<output>\n./core/engine.py\n</output>"), a("The file is core/engine.py.")),
+     row(u("Find the engine file."),
+         ac({"id": "call_0", "type": "function", "function": {"name": "bash", "arguments": '{"command": "grep -rl engine ."}'}}),
+         t("./core/engine.py"), a("The file is core/engine.py.", reasoning_content="The search found one file."),
+         tools=[{"type": "function", "function": {"name": "bash", "description": "Run a shell command",
+                 "parameters": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}}}]))
 rule(G5, "SYS_tools_promised_but_no_tools", "Tools promised, but no tools",
      "The system prompt says that functions are available, but the row has no tools list and no tool calls.",
      "Tool results are pasted into the text or invented by the assistant. The model learns to invent API results.",

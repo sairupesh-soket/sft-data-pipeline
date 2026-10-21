@@ -13,7 +13,7 @@ OVERVIEW = [
     ("table", ["Stage", "Command", "What it does"], [
         ["1. Convert", "python3 -m sft_pipeline.convert ADAPTER", "Reads the raw files and writes OpenAI-format rows. One adapter for each source family."],
         ["2. Clean", "python3 -m sft_pipeline.clean", "Runs the repair steps in a fixed order. Writes a new folder. The source does not change."],
-        ["3. Validate", "python3 -m sft_pipeline.validate", "Checks every row with 67 rules. Flags the bad rows (file, line, rule). Changes nothing."],
+        ["3. Validate", "python3 -m sft_pipeline.validate", "Checks every row with 68 rules. Flags the bad rows (file, line, rule). Changes nothing."],
         ["4. Stats", "python3 -m sft_pipeline.stats", "Counts rows, tokens, turns, tool calls and reasoning rows. Writes a workbook."],
     ]),
     ("note", "The validation only flags rows. It does not decide to fix or remove data. The data owners decide."),
@@ -190,14 +190,14 @@ HF_DOMAIN = [
 ]
 
 VALIDATE = [
-    ("p", "The validation checks every row with 67 rules (63 FLAG, 4 INFO), including the eka template render check. "
+    ("p", "The validation checks every row with 68 rules (64 FLAG, 4 INFO), including the eka template render check. "
           "It writes a list of every flagged row and sample rows for each rule. It changes nothing."),
     ("code", "export EKA_SPM=/path/eka_v0_1_1.model\nexport EKA_TEMPLATE=/path/eka_v0_2_0/chat_template.jinja\n"
              "python3 -m sft_pipeline.validate CLEAN REPORT_DIR 32 100   # 32 processes, render 1 row in 100"),
     ("table", ["Output file", "Content"], [
         ["ISSUES_REPORT.txt", "Rows for each rule, top sources, stats (reasoning, tool calls, turns, length)"],
-        ["REMOVE_SUMMARY.txt", "Rows with at least one FLAG rule, rows for each rule"],
-        ["ROWS_TO_REMOVE.txt", "Every flagged row: file, line (1-based), byte offset, rule ids"],
+        ["FLAG_SUMMARY.txt", "Rows with at least one FLAG rule, rows for each rule"],
+        ["ROWS_FLAGGED.txt", "Every flagged row: file, line (1-based), byte offset, rule ids"],
         ["ROWS_INFO_ONLY.txt", "Rows with INFO rules only"],
         ["samples/<rule>.txt", "Up to 10 full rows for each rule, from different sources"],
     ]),

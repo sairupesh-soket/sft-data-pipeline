@@ -149,7 +149,7 @@ def pair(label_a, a, label_b, b, width=51):
 
 def diagram():
     steps = [("Raw sources", "parquet / jsonl in many schemas"), ("1. Convert", "adapters -> OpenAI messages"),
-             ("2. Clean", "repair steps (new output folder)"), ("3. Validate", "67 rules: flag rows, change nothing"),
+             ("2. Clean", "repair steps (new output folder)"), ("3. Validate", "68 rules: flag rows, change nothing"),
              ("4. Stats", "rows, tokens, turns, tools, reasoning")]
     bw, bh, gap = 150, 30, 14
     h = len(steps) * (bh + gap)
