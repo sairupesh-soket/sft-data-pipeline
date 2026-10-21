@@ -7,3 +7,6 @@ outputs/
 *.jsonl.gz
 *.parquet
 *.log
+
+# built documents (build locally with docs/build_*.py)
+*.pdf

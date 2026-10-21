@@ -104,7 +104,7 @@ Each rule has a flagged and a correct example row (OpenAI format) in `docs/valid
 | `sft_pipeline/stats.py` | statistics workbook |
 | `legacy/` | one-off fixes for single datasets; scripts of the old storage format |
 | `tests/` | synthetic before/after cases for every repair step and adapter helper |
-| `docs/` | `SFT_PIPELINE.pdf` (conversion + cleaning + validation), `SFT_VALIDATION_RULES.pdf`, their builders |
+| `docs/` | PDF builders: `python3 docs/build_pdf.py` -> `SFT_PIPELINE.pdf` (conversion + cleaning + validation), `python3 docs/build_validation_pdf.py` -> `SFT_VALIDATION_RULES.pdf`. The PDFs are not in git; build them locally (needs reportlab). |
 
 ## Add a new source
 

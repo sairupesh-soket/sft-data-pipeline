@@ -26,7 +26,7 @@ INTRO = [
     ("Examples",
      "Each rule has two rows in the OpenAI format. FLAGGED shows a row with the problem. CORRECT FORM shows how the row "
      "must look. Both rows were checked with the validation code: the flagged row gets the rule, the correct row gets no "
-     "FLAG rule. Red marks the text that changes in the flagged row. Green marks the new text in the correct form. "
+     "FLAG rule. Green marks only the text that is different between the two rows: the wrong text in the flagged row and the changed text in the correct form. "
      "The \"Difference\" line below each example tells the change in one or two sentences. "
      "Long texts are made short with \"...\" in some examples."),
     ("Precision",

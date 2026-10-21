@@ -41,8 +41,8 @@ pdfmetrics.registerFontFamily("DV", normal="DV", bold="DVB", italic="DVI", boldI
 
 INK, MUTED, LINE, BG = colors.HexColor("#1b1b1a"), colors.HexColor("#5a5955"), colors.HexColor("#d9d8d3"), colors.HexColor("#f2f1ee")
 BLUE = colors.HexColor("#2a78d6")
-IN_BG, IN_LN = colors.HexColor("#fdecea"), colors.HexColor("#c62828")
-OUT_BG, OUT_LN = colors.HexColor("#e8f5e9"), colors.HexColor("#2e7d32")
+IN_BG, IN_LN = colors.HexColor("#f4f5f7"), colors.HexColor("#9aa0a6")   # neutral box; only the changed text is green
+OUT_BG, OUT_LN = colors.HexColor("#f4f5f7"), colors.HexColor("#9aa0a6")
 ACT = {"FLAG": colors.HexColor("#c62828"), "INFO": colors.HexColor("#5a5955")}
 
 ss = {
@@ -137,7 +137,7 @@ def jrow(o):
     return json.dumps(o, ensure_ascii=False, indent=1)
 
 
-DEL_BG, ADD_BG = "#f7b9b9", "#a8e6b4"   # highlight: removed / changed text (left), new text (right)
+DEL_BG = ADD_BG = "#a8e6b4"   # highlight: only the text that differs between the two rows (both sides green)
 _TOK = re.compile(r"\w+|\s+|[^\w\s]")
 
 
@@ -164,7 +164,21 @@ def _marks(la, lb):
                 ma[ia] = [True] * len(la[ia])
             else:                             # line only on the right
                 mb[ib] = [True] * len(lb[ib])
+    for side in (ma, mb):
+        for i, (line, mk) in enumerate(zip(la if side is ma else lb, side)):
+            side[i] = _smooth(line, mk)
     return ma, mb
+
+
+def _smooth(line, mk, gap=8):
+    """Join marked pieces that are close together, so one change shows as one block."""
+    mk = list(mk)
+    idx = [i for i, m in enumerate(mk) if m]
+    for a, b in zip(idx, idx[1:]):
+        if 1 < b - a <= gap + 1 or (b - a > 1 and not any(c.isalnum() for c in line[a + 1:b]) and b - a <= 20):
+            for c in range(a + 1, b):
+                mk[c] = True
+    return mk
 
 
 def _wrap_marked(lines, masks, width):
