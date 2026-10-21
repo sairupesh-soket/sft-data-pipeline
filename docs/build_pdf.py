@@ -1,6 +1,6 @@
 """Build docs/SFT_PIPELINE.pdf.   python3 docs/build_pdf.py
 Text: docs/pipeline_content.py (ASD-STE100). Examples: tests/cases.py run through the real code.
-Validation rules: docs/rules_content.py."""
+Validation rules: docs/validation_rules.py."""
 import copy
 import json
 import os
