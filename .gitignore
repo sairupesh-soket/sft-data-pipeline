@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+*.json
+*.jsonl
+*.log
+*.txt
+*.parquet
+*.zst
+_sample_final/
+openai_sft_out/
